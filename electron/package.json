@@ -1,0 +1,72 @@
+{
+  "name": "videodl-gui",
+  "version": "1.3.0",
+  "description": "VideoDL 视频下载器 —— 解析下载 B站/抖音/YouTube 等 1000+ 平台的视频",
+  "main": "src/main.js",
+  "author": "VideoDL",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build32": "electron-builder --win --ia32"
+  },
+  "build": {
+    "appId": "com.videodl.app",
+    "productName": "VideoDL视频下载器",
+    "copyright": "VideoDL",
+    "directories": {
+      "output": "D:\\Video\\VideoDL\\dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "D:\\Video\\VideoDL\\app",
+        "to": "engine",
+        "filter": [
+          "*.py",
+          "vdl_engine.exe"
+        ]
+      },
+      {
+        "from": "D:\\Video\\bin",
+        "to": "ffmpeg",
+        "filter": [
+          "ffmpeg.exe"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "language": "2052",
+      "createDesktopShortcut": true,
+      "shortcutName": "VideoDL视频下载器"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

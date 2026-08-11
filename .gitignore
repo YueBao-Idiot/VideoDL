@@ -1,0 +1,21 @@
+# ⚠️ 用户私人数据 —— 绝不允许提交
+cookies.txt
+config.json
+cache/
+
+# 运行日志
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 构建产物（安装包放 GitHub Release，不进仓库）
+dist/
+*.exe
+*.blockmap
+builder-debug.yml
+
+# Node
+node_modules/
