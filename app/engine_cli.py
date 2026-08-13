@@ -11,8 +11,8 @@ stdout 每行一条 JSON 事件：
     {"type": "ready", "status": {...}}            引擎初始化完成
     {"type": "bye"}                                退出
 
-支持命令：parse / download / cancel / config/set / ffmpeg/ensure
-         / cover / folder/open / status / ping / quit
+支持命令：parse / download / convert / cancel / config/set
+         / ffmpeg/ensure / cover / folder/open / status / ping / quit
 """
 import json
 import os
@@ -56,6 +56,11 @@ def handle(engine, req):
                              req.get("task_id"), req.get("video_path"),
                              bool(req.get("embed")))
         return reply(rid, **r)
+    if cmd == "convert":
+        r = engine.start_convert(req.get("files", []),
+                                 req.get("out_dir"),
+                                 req.get("format", "mp4"))
+        return reply(rid, **r)
     if cmd == "cancel":
         r = engine.cancel(req.get("task_id"))
         return reply(rid, **r)
@@ -63,6 +68,8 @@ def handle(engine, req):
         key, val = req.get("key"), req.get("value")
         if key == "download_dir":
             r = engine.set_download_dir(val)
+        elif key == "convert_dir":
+            r = engine.set_convert_dir(val)
         elif key == "cookie_browser":
             r = engine.set_cookie_browser(val)
         elif key == "cookie_file":
@@ -88,6 +95,8 @@ def handle(engine, req):
     if cmd == "ping":
         return reply(rid, ok=True)
     if cmd == "quit":
+        # 先终止所有活动的 ffmpeg 转换子进程，避免残留孤儿进程
+        engine.shutdown()
         return reply(rid, ok=True)
     return reply(rid, ok=False, error=f"未知命令: {cmd}")
 

@@ -2,6 +2,7 @@
 
 路径约定 —— 所有落盘操作都限定在 D:\\Video 之下：
     默认下载目录   D:\\Video\\downloads
+    转换输出目录   D:\\Video\\converted
     ffmpeg 目录     D:\\Video\\bin
     配置文件       D:\\Video\\VideoDL\\config.json
     yt-dlp 缓存    D:\\Video\\VideoDL\\cache
@@ -37,6 +38,7 @@ def _resolve_root():
 
 ROOT = _resolve_root()
 DOWNLOADS_DIR = os.path.join(ROOT, "downloads")
+CONVERT_DIR = os.path.join(ROOT, "converted")
 BIN_DIR = os.path.join(ROOT, "bin")
 APP_DIR = os.path.join(ROOT, "VideoDL")
 CACHE_DIR = os.path.join(APP_DIR, "cache")
@@ -44,6 +46,7 @@ CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 
 DEFAULT_CONFIG = {
     "download_dir": DOWNLOADS_DIR,
+    "convert_dir": CONVERT_DIR,
     "cookie_browser": None,   # None | "edge" | "chrome" | "firefox"
     "cookie_file": None,      # 登录助手导出的 cookies.txt 绝对路径（优先于 cookie_browser）
     "concurrency": 2,
@@ -59,6 +62,26 @@ FFMPEG_ZIPS = [
 ]
 
 BROWSERS = {"edge": "Edge", "chrome": "Chrome", "firefox": "Firefox"}
+
+# 格式转换输出预设：格式 → (扩展名, ffmpeg 编码参数)。简单模式：只选格式，参数用稳妥默认。
+CONVERT_PRESETS = {
+    "mp4":   ("mp4",  ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]),
+    "mkv":   ("mkv",  ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-b:a", "192k"]),
+    "webm":  ("webm", ["-c:v", "libvpx", "-crf", "32", "-b:v", "0", "-c:a", "libopus", "-b:a", "128k"]),
+    "mov":   ("mov",  ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-b:a", "192k"]),
+    "avi":   ("avi",  ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-b:a", "192k"]),
+    "mp3":   ("mp3",  ["-vn", "-c:a", "libmp3lame", "-b:a", "320k"]),
+    "flac":  ("flac", ["-vn", "-c:a", "flac"]),
+    "wav":   ("wav",  ["-vn", "-c:a", "pcm_s16le"]),
+    "aac":   ("aac",  ["-vn", "-c:a", "aac", "-b:a", "320k"]),
+}
+
+# 可转换的源文件扩展名（视频 + 音频）
+CONVERT_INPUT_EXTS = {
+    ".mp4", ".mkv", ".webm", ".mov", ".avi", ".flv", ".wmv", ".m4v",
+    ".ts", ".mts", ".3gp", ".mpg", ".mpeg", ".rmvb",
+    ".mp3", ".flac", ".wav", ".aac", ".m4a", ".ogg", ".opus", ".wma", ".amr",
+}
 
 
 def load_config():
@@ -100,7 +123,10 @@ class Task:
         self.format_id = format_id
         self.label = label
         self.thumbnail = None          # 解析得到的封面图 URL，下载封面用
-        self.status = "pending"        # pending/running/merging/done/error/cancelled/cancelling
+        self.kind = "download"         # download | convert
+        self.src = None                # 转换任务：源文件路径
+        self.out_path = None           # 转换任务：输出文件路径
+        self.status = "pending"        # pending/running/merging/converting/done/error/cancelled/cancelling
         self.progress = 0.0
         self.speed = None
         self.eta = None
@@ -118,6 +144,9 @@ class Task:
             "format_id": self.format_id,
             "label": self.label,
             "thumbnail": self.thumbnail,
+            "kind": self.kind,
+            "src": self.src,
+            "out_path": self.out_path,
             "status": self.status,
             "progress": round(self.progress, 1),
             "speed": self.speed,
@@ -136,14 +165,18 @@ class Engine:
         self.tasks = {}
         self._tasks_lock = threading.Lock()
         self._q = queue.Queue()
+        self._cvt_q = queue.Queue()
+        self._cvt_reserved = set()   # 已分配、尚未落盘的输出路径，防并发重名
         self._next_id = 1
         self.ffmpeg_ready = self._check_ffmpeg()
         self._ff_last = 0.0
         self._n_workers = 0
         os.makedirs(self.cfg["download_dir"], exist_ok=True)
+        os.makedirs(self.cfg.get("convert_dir", CONVERT_DIR), exist_ok=True)
         os.makedirs(BIN_DIR, exist_ok=True)
         os.makedirs(CACHE_DIR, exist_ok=True)
         self._start_workers(self.cfg.get("concurrency", 2))
+        threading.Thread(target=self._convert_worker, daemon=True).start()
 
     # ---------------- 基础工具 ----------------
     def _emit(self, evt):
@@ -440,7 +473,29 @@ class Engine:
         task.cancel_requested = True
         task.status = "cancelling"
         self._emit({"type": "task", "task": task.to_dict()})
+        # 转换任务：直接终止 ffmpeg 子进程，避免一直转到结束
+        proc = getattr(task, "_proc", None)
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
         return {"ok": True}
+
+    def shutdown(self):
+        """退出前清理：终止所有活动的转换 ffmpeg 子进程，避免残留孤儿进程。
+        （worker 是 daemon 线程，引擎进程退出时会直接结束线程，但 ffmpeg 是独立
+        子进程，必须显式 terminate，否则会变成孤儿继续转码。）
+        """
+        with self._tasks_lock:
+            for task in self.tasks.values():
+                task.cancel_requested = True
+                proc = getattr(task, "_proc", None)
+                if proc is not None and proc.poll() is None:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
 
     def _start_workers(self, n):
         n = max(1, min(int(n or 1), 3))
@@ -715,10 +770,156 @@ class Engine:
             return {"ok": False, "error": "截取视频第一帧失败"}
         return {"ok": False, "error": "封面抓取失败（暂无封面链接且视频未下载）。请先下载视频，再点一次「封面」会自动补上"}
 
+    # ---------------- 格式转换 ----------------
+    def start_convert(self, files, out_dir=None, target_format="mp4"):
+        fmt = (target_format or "mp4").lower()
+        if fmt not in CONVERT_PRESETS:
+            return {"ok": False, "error": f"不支持的输出格式: {fmt}"}
+        if not isinstance(files, list) or not files:
+            return {"ok": False, "error": "没有要转换的文件"}
+        # 输出目录：优先用前端指定，同时记住为用户的选择
+        if out_dir:
+            try:
+                os.makedirs(out_dir, exist_ok=True)
+                self.cfg["convert_dir"] = out_dir
+                save_config(self.cfg)
+            except Exception as e:
+                return {"ok": False, "error": f"无法创建输出目录: {e}"}
+        out_dir = self.cfg.get("convert_dir", CONVERT_DIR)
+        # 过滤出可转换的视频/音频文件
+        todo = []
+        for f in files:
+            if not (isinstance(f, str) and os.path.isfile(f)):
+                continue
+            if os.path.splitext(f)[1].lower() not in CONVERT_INPUT_EXTS:
+                continue
+            todo.append(f)
+        if not todo:
+            return {"ok": False, "error": "没有可转换的视频/音频文件"}
+        created = []
+        with self._tasks_lock:
+            for f in todo:
+                tid = self._next_id
+                self._next_id += 1
+                task = Task(tid, f, "", "🔄 " + os.path.basename(f))
+                task.kind = "convert"
+                task.src = f
+                task.out_path = self._convert_out_path(f, out_dir, fmt)
+                self._cvt_reserved.add(task.out_path)
+                task.target_format = fmt
+                self.tasks[tid] = task
+                created.append(task.to_dict())
+                self._cvt_q.put(task)
+                self._emit({"type": "task", "task": task.to_dict()})
+        return {"ok": True, "tasks": created, "convert_dir": out_dir}
+
+    def _convert_out_path(self, src, out_dir, ext):
+        """输出路径：源文件名 + 目标扩展名。
+        既看磁盘上已有的文件，也看本引擎已分配但还没落盘的路径，
+        保证不同目录同名文件 / 快速重复转换也不会互相覆盖。"""
+        stem = os.path.splitext(os.path.basename(src))[0]
+        cand = os.path.join(out_dir, f"{stem}.{ext}")
+        if not os.path.exists(cand) and cand not in self._cvt_reserved:
+            return cand
+        i = 1
+        while True:
+            cand = os.path.join(out_dir, f"{stem} ({i}).{ext}")
+            if not os.path.exists(cand) and cand not in self._cvt_reserved:
+                return cand
+            i += 1
+
+    def _convert_worker(self):
+        while True:
+            task = self._cvt_q.get()
+            try:
+                if task.cancel_requested:
+                    self._finish(task, "cancelled")
+                    continue
+                self._run_convert(task)
+            except Exception as e:
+                self._fail(task, e)
+            finally:
+                with self._tasks_lock:
+                    self._cvt_reserved.discard(task.out_path)
+                self._cvt_q.task_done()
+
+    def _run_convert(self, task):
+        ff = os.path.join(BIN_DIR, "ffmpeg.exe")
+        src = task.src
+        out = task.out_path
+        if not os.path.isfile(ff):
+            self._fail(task, "ffmpeg 未就绪，无法转换")
+            return
+        if not src or not os.path.isfile(src):
+            self._fail(task, "源文件不存在或已被移动")
+            return
+        fmt = getattr(task, "target_format", None) or "mp4"
+        _, codec = CONVERT_PRESETS.get(fmt, CONVERT_PRESETS["mp4"])
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        args = [ff, "-y", "-nostats", "-nostdin", "-progress", "pipe:1", "-i", src] + codec + [out]
+        try:
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        except Exception as e:
+            self._fail(task, f"无法启动 ffmpeg: {e}")
+            return
+        task._proc = proc
+        self._update(task, status="converting", progress=0.0)
+        # 后台读 stderr，抓 Duration 计算总时长；同时避开管道写满卡死
+        duration = [None]
+        errlines = []
+
+        def _read_stderr():
+            for raw in proc.stderr:
+                line = raw.decode("utf-8", errors="replace")
+                if duration[0] is None:
+                    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", line)
+                    if m:
+                        hh, mm, ss = m.group(1), m.group(2), m.group(3)
+                        duration[0] = int(hh) * 3600 + int(mm) * 60 + float(ss)
+                errlines.append(line.rstrip())
+
+        threading.Thread(target=_read_stderr, daemon=True).start()
+        # 主循环读 -progress 输出，把 out_time 换算成百分比
+        while True:
+            if task.cancel_requested:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                break
+            line = proc.stdout.readline()
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace").strip()
+            key, _, val = text.partition("=")
+            if key in ("out_time_us", "out_time_ms"):
+                try:
+                    t = int(val) / (1_000_000.0 if key.endswith("us") else 1_000.0)
+                except ValueError:
+                    continue
+                if duration[0]:
+                    task.progress = min(99.9, t / duration[0] * 100.0)
+                    self._emit_throttled(task)
+            elif key == "progress" and val == "end":
+                task.progress = 100.0
+                self._emit_throttled(task)
+        rc = proc.wait()
+        task._proc = None
+        if task.cancel_requested:
+            self._finish(task, "cancelled")
+            return
+        if rc == 0 and os.path.isfile(out) and os.path.getsize(out) > 0:
+            self._update(task, progress=100.0)
+            self._finish(task, "done", out)
+        else:
+            detail = "\n".join(errlines[-6:])
+            self._fail(task, f"转换失败（ffmpeg 退出码 {rc}）{detail[:500]}")
+
     # ---------------- 配置 ----------------
     def get_status(self):
         return {
             "download_dir": self.cfg["download_dir"],
+            "convert_dir": self.cfg.get("convert_dir", CONVERT_DIR),
             "cookie_browser": self.cfg["cookie_browser"],
             "cookie_file": self.cfg.get("cookie_file"),
             "concurrency": self.cfg.get("concurrency", 2),
@@ -726,6 +927,17 @@ class Engine:
             "root": ROOT,
             "tasks": [t.to_dict() for t in self.tasks.values()],
         }
+
+    def set_convert_dir(self, path):
+        try:
+            path = (path or "").strip()
+            os.makedirs(path, exist_ok=True)
+            self.cfg["convert_dir"] = path
+            save_config(self.cfg)
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
 
     def set_download_dir(self, path):
         try:

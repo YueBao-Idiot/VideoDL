@@ -457,6 +457,49 @@ input, button, select, textarea { user-select: text; }
 .toast.error { border-left-color: var(--red); }
 .toast.info { border-left-color: var(--accent2); }
 @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+/* ══════════════ 格式转换页 ══════════════ */
+.cvt-drop {
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  background: var(--bg2); padding: 34px 0;
+  text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  outline: none; margin-bottom: 14px;
+}
+.cvt-drop:hover, .cvt-drop:focus-visible { border-color: var(--accent2); }
+.cvt-drop.drag {
+  border-color: var(--accent2); background: rgba(124,58,237,0.08);
+}
+.cvt-drop-icon { font-size: 30px; margin-bottom: 8px; }
+.cvt-drop-text { font-size: 15px; font-weight: 600; }
+.cvt-drop-hint { font-size: 12px; color: var(--text3); margin-top: 6px; }
+
+.cvt-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.cvt-file {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+}
+.cvt-file-name {
+  flex: 1; font-size: 13px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.cvt-del { flex-shrink: 0; padding: 2px 8px; line-height: 1.4; }
+
+.cvt-ops {
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px;
+}
+.cvt-label {
+  flex-shrink: 0; font-size: 13px; color: var(--text2);
+  font-weight: 600; min-width: 44px;
+}
+.fmt-select {
+  flex: 1; cursor: pointer; appearance: auto;
+  color: var(--text);
+}
+.s-converting { color: var(--accent2); background: rgba(168,85,247,0.15); }
 .toast.out { opacity: 0; transition: opacity 0.3s; }
 
 @keyframes pulse {

@@ -5,7 +5,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, session } = require('electron');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 
 let mainWindow;
@@ -139,13 +139,16 @@ function startEngine() {
   });
 }
 
-function stopEngine() {
+// 停止引擎：先优雅 quit（引擎自己会终止活动 ffmpeg 并保存状态），
+// 再同步杀整棵进程树兜底，确保任何残留子进程（ffmpeg 等）都被清掉。
+function killEngineTree() {
   if (!engineProcess) return;
-  engineDied = true;
+  const pid = engineProcess.pid;
   try { engineProcess.stdin.write(JSON.stringify({ id: -1, cmd: 'quit' }) + '\n'); } catch {}
-  setTimeout(() => {
-    try { engineProcess.kill(); } catch {}
-  }, 600);
+  try { engineProcess.kill(); } catch {}
+  try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }); } catch {}
+  engineProcess = null;
+  engineDied = true;
 }
 
 function sendCommand(obj) {
@@ -167,12 +170,14 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  stopEngine();
+  // 叉掉窗口 = 退出整个应用：同步杀引擎进程树，确保 ffmpeg 等子进程不留
+  killEngineTree();
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('will-quit', () => {
-  stopEngine();
+  // 保险：无论应用以何种方式退出，进程树都要清干净
+  killEngineTree();
   if (loginWindow && !loginWindow.isDestroyed()) loginWindow.destroy();
 });
 
@@ -204,6 +209,21 @@ ipcMain.handle('pick-dir', async (event, defaultPath) => {
   });
   if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
   return { ok: true, path: r.filePaths[0] };
+});
+
+// ── 选择转换源文件（多选，Windows 原生对话框） ────────────
+ipcMain.handle('pick-files', async (event, defaultPath) => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: '选择要转换的视频 / 音频文件',
+    defaultPath: defaultPath || 'D:\\Video\\downloads',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: '视频 / 音频', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'flv', 'wmv', 'm4v', 'ts', 'mts', '3gp', 'mpg', 'mpeg', 'rmvb', 'mp3', 'flac', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'wma', 'amr'] },
+      { name: '所有文件', extensions: ['*'] },
+    ],
+  });
+  if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
+  return { ok: true, paths: r.filePaths };
 });
 
 // ── 打开文件夹/文件所在目录 ───────────────────────────────

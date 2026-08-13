@@ -11,7 +11,7 @@
     <div class="titlebar-logo">
       <span class="logo-icon">▶</span>
       <span class="logo-text">VideoDL</span>
-      <span class="logo-ver">v1.3.0</span>
+      <span class="logo-ver">v1.3.1</span>
       <span class="logo-tag">视频下载器</span>
     </div>
     <div class="titlebar-status">
@@ -31,6 +31,7 @@
       <button class="nav-item active" data-page="home"><span class="nav-icon">🏠</span>首页</button>
       <button class="nav-item" data-page="download"><span class="nav-icon">🎬</span>视频下载</button>
       <button class="nav-item" data-page="tasks"><span class="nav-icon">📥</span>下载任务</button>
+      <button class="nav-item" data-page="convert"><span class="nav-icon">🔄</span>格式转换</button>
       <button class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span>设置</button>
       <button class="nav-item" data-page="log"><span class="nav-icon">📜</span>运行日志</button>
 
@@ -144,6 +145,53 @@
         </div>
         <div id="taskList" class="task-list"></div>
         <div id="taskEmpty" class="task-empty">暂无下载任务</div>
+      </section>
+
+      <!-- ── 格式转换 ── -->
+      <section class="page" id="page-convert">
+        <div class="page-header">
+          <h1>格式转换</h1>
+          <div class="page-subtitle">视频转 MP4 / MKV / AVI / WEBM / MOV，音频转 MP3 / FLAC / WAV / AAC，用内置 ffmpeg 本地完成</div>
+        </div>
+
+        <div class="cvt-drop" id="cvtDrop" tabindex="0" role="button" aria-label="选择要转换的文件">
+          <div class="cvt-drop-icon">📂</div>
+          <div class="cvt-drop-text">点击选择文件，或把视频 / 音频拖到这里</div>
+          <div class="cvt-drop-hint">支持多选，一次可转多个文件</div>
+        </div>
+
+        <div id="cvtList" class="cvt-list"></div>
+
+        <div class="cvt-ops">
+          <div class="dir-row">
+            <span class="cvt-label">输出到</span>
+            <input id="cvtDir" class="inp" spellcheck="false" placeholder="D:\Video\converted" />
+            <button class="btn-ghost" id="btnCvtDir">选择</button>
+            <button class="btn-ghost" id="btnCvtDirOpen">打开</button>
+          </div>
+          <div class="dir-row">
+            <span class="cvt-label">转为</span>
+            <select id="cvtFmt" class="inp fmt-select">
+              <optgroup label="视频">
+                <option value="mp4" selected>MP4（推荐）</option>
+                <option value="mkv">MKV</option>
+                <option value="avi">AVI</option>
+                <option value="webm">WEBM</option>
+                <option value="mov">MOV</option>
+              </optgroup>
+              <optgroup label="音频">
+                <option value="mp3">MP3</option>
+                <option value="flac">FLAC</option>
+                <option value="wav">WAV</option>
+                <option value="aac">AAC</option>
+              </optgroup>
+            </select>
+            <button class="btn-primary" id="btnCvt">🔄 开始转换</button>
+          </div>
+        </div>
+
+        <div id="cvtTasks" class="task-list"></div>
+        <div id="cvtEmpty" class="task-empty">选择或拖入文件后即可开始转换</div>
       </section>
 
       <!-- ── 设置 ── -->

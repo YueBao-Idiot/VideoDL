@@ -1,7 +1,7 @@
 /**
  * preload.js - 通过 contextBridge 暴露安全 API 给渲染层
  */
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   // 窗口控制
@@ -32,8 +32,12 @@ contextBridge.exposeInMainWorld('api', {
 
   // 系统
   pickDir: (def) => ipcRenderer.invoke('pick-dir', def),
+  pickFiles: (def) => ipcRenderer.invoke('pick-files', def),
   openFolder: (p) => ipcRenderer.invoke('open-folder', p),
   pasteClipboard: () => ipcRenderer.invoke('paste-clipboard'),
+
+  // 拖拽文件取真实路径（Electron 32+ 移除了 File.path，必须走 webUtils）
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 
   // 登录助手
   openLogin: (url) => ipcRenderer.invoke('open-login', url),

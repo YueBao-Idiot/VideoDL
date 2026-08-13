@@ -287,13 +287,18 @@ async function coverFromTask(id) {
 // ── 任务列表（Map id → DOM，就地更新，进度不抖动） ──
 const tasks = new Map();
 const STATUS_TEXT = {
-  pending: '排队中', running: '下载中', merging: '合并中',
+  pending: '排队中', running: '下载中', merging: '合并中', converting: '转换中',
   done: '完成', error: '失败', cancelled: '已取消', cancelling: '取消中',
 };
 const STATUS_CLS = {
-  pending: 's-pending', running: 's-running', merging: 's-merging',
+  pending: 's-pending', running: 's-running', merging: 's-merging', converting: 's-converting',
   done: 's-done', error: 's-error', cancelled: 's-cancelled', cancelling: 's-cancelling',
 };
+
+// 转换任务渲染到转换页自己的列表，下载任务到下载任务页
+function taskListEl(kind) {
+  return (kind === 'convert' ? $('#cvtTasks') : $('#taskList'));
+}
 
 function taskCardHtml() {
   return `
@@ -325,7 +330,7 @@ function renderTask(task) {
       const t = el._task;
       if (t && t.filepath) window.api.openFolder(t.filepath);
     });
-    $('#taskList').appendChild(el);
+    taskListEl(task.kind).appendChild(el);
     tasks.set(task.id, el);
   }
   el.dataset.status = task.status;
@@ -350,9 +355,15 @@ function renderTask(task) {
   errEl.classList.add('hidden');
 
   if (task.status === 'running') {
-    const speed = fmtSpeed(task.speed);
-    const eta = fmtEta(task.eta);
-    info.textContent = [speed, eta, task.total ? fmtSize(task.downloaded) + ' / ' + fmtSize(task.total) : ''].filter(Boolean).join(' · ');
+    if (task.kind === 'convert') {
+      info.textContent = '正在转换…';
+    } else {
+      const speed = fmtSpeed(task.speed);
+      const eta = fmtEta(task.eta);
+      info.textContent = [speed, eta, task.total ? fmtSize(task.downloaded) + ' / ' + fmtSize(task.total) : ''].filter(Boolean).join(' · ');
+    }
+  } else if (task.status === 'converting') {
+    info.textContent = '正在转换…';
   } else if (task.status === 'done') {
     fileEl.classList.remove('hidden');
     fileEl.textContent = '📁 ' + (task.filepath || '');
@@ -372,10 +383,21 @@ function renderTask(task) {
   cancelBtn.disabled = task.status === 'cancelling';
 
   const coverBtn = el.querySelector('.btn-cover');
-  coverBtn.classList.toggle('hidden', task.status !== 'done');
+  coverBtn.classList.toggle('hidden', task.status !== 'done' || task.kind === 'convert');
 
-  $('#taskEmpty').style.display = tasks.size ? 'none' : 'block';
+  updateEmptyStates();
   updateStats();
+}
+
+// 下载任务/转换任务两个列表各自显示自己的空态
+function updateEmptyStates() {
+  let hasDownload = false, hasConvert = false;
+  for (const [id, el] of tasks) {
+    const k = el._task ? el._task.kind : 'download';
+    if (k === 'convert') hasConvert = true; else hasDownload = true;
+  }
+  $('#taskEmpty').style.display = hasDownload ? 'none' : 'block';
+  $('#cvtEmpty').style.display = hasConvert ? 'none' : 'block';
 }
 
 function updateStats() {
@@ -384,7 +406,7 @@ function updateStats() {
     const st = el._task ? el._task.status : null;
     if (!st) continue;
     if (st === 'done') done++;
-    if (['pending', 'running', 'merging', 'cancelling'].includes(st)) active++;
+    if (['pending', 'running', 'merging', 'converting', 'cancelling'].includes(st)) active++;
   }
   $('#statDone').textContent = done;
   $('#statActive').textContent = active;
@@ -413,11 +435,120 @@ $('#btnOpenDir').addEventListener('click', () => window.api.openFolder());
 $('#btnOpenDirCfg').addEventListener('click', () => window.api.openFolder($('#cfgDir').value.trim()));
 
 // ════════════════════════════════════════════
+//  格式转换
+// ════════════════════════════════════════════
+const CONVERT_EXTS = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'flv', 'wmv', 'm4v', 'ts', 'mts', '3gp', 'mpg', 'mpeg', 'rmvb', 'mp3', 'flac', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'wma', 'amr']);
+let cvtFiles = [];
+
+function cvtName(p) { return p.replace(/[\\/]/g, '/').split('/').pop(); }
+
+function addCvtFiles(paths) {
+  let added = 0;
+  for (const p of paths) {
+    if (!p || cvtFiles.includes(p)) continue;
+    const ext = (p.split('.').pop() || '').toLowerCase();
+    if (!CONVERT_EXTS.has(ext)) continue;
+    cvtFiles.push(p);
+    added++;
+  }
+  renderCvtList();
+  if (added) showToast('info', `已添加 ${added} 个文件`);
+  else if (paths.length) showToast('error', '没有可转换的视频 / 音频文件');
+}
+
+function renderCvtList() {
+  const box = $('#cvtList');
+  box.classList.toggle('hidden', !cvtFiles.length);
+  box.innerHTML = '';
+  for (const p of cvtFiles) {
+    const row = document.createElement('div');
+    row.className = 'cvt-file';
+    row.innerHTML = `<span class="cvt-file-name" title="${p}">${cvtName(p)}</span>`
+      + `<button class="btn-ghost btn-small cvt-del" title="移除">✕</button>`;
+    row.querySelector('.cvt-del').addEventListener('click', () => {
+      cvtFiles = cvtFiles.filter((x) => x !== p);
+      renderCvtList();
+    });
+    box.appendChild(row);
+  }
+}
+
+const cvtDrop = $('#cvtDrop');
+cvtDrop.addEventListener('click', async () => {
+  const r = await window.api.pickFiles($('#cvtDir').value.trim() || 'D:\\Video\\downloads');
+  if (r && r.ok && r.paths) addCvtFiles(r.paths);
+});
+cvtDrop.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cvtDrop.click(); }
+});
+['dragenter', 'dragover'].forEach((ev) => cvtDrop.addEventListener(ev, (e) => {
+  e.preventDefault();
+  cvtDrop.classList.add('drag');
+}));
+['dragleave', 'drop'].forEach((ev) => cvtDrop.addEventListener(ev, (e) => {
+  e.preventDefault();
+  cvtDrop.classList.remove('drag');
+}));
+cvtDrop.addEventListener('drop', (e) => {
+  const paths = [];
+  for (const f of e.dataTransfer.files) {
+    const p = window.api.getPathForFile(f);
+    if (p) paths.push(p);
+  }
+  if (paths.length) addCvtFiles(paths);
+  else showToast('error', '无法读取拖入的文件路径');
+});
+
+$('#btnCvt').addEventListener('click', async () => {
+  if (!cvtFiles.length) { showToast('info', '请先选择或拖入要转换的文件'); return; }
+  const outDir = $('#cvtDir').value.trim();
+  if (outDir && !/^[A-Za-z]:[\\/]/.test(outDir) && !/^\\\\/.test(outDir)) {
+    showToast('error', '输出目录不是有效的绝对路径，例如 D:\\Video\\converted');
+    return;
+  }
+  const fmt = $('#cvtFmt').value;
+  const files = [...cvtFiles];
+  const btn = $('#btnCvt');
+  btn.disabled = true;
+  try {
+    const r = await cmd({ cmd: 'convert', files, out_dir: outDir, format: fmt });
+    if (!r.ok) throw new Error(r.error || '转换启动失败');
+    showToast('success', `已加入 ${r.tasks.length} 个转换任务`);
+    logLine(`格式转换: ${files.length} 个文件 → ${fmt.toUpperCase()}`);
+    cvtFiles = [];
+    renderCvtList();
+  } catch (e) {
+    showToast('error', '转换启动失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btnCvtDir').addEventListener('click', async () => {
+  const r = await window.api.pickDir($('#cvtDir').value.trim() || 'D:\\Video\\converted');
+  if (r && r.ok) {
+    $('#cvtDir').value = r.path;
+    $('#cvtDir').dispatchEvent(new Event('change'));
+  }
+});
+$('#btnCvtDirOpen').addEventListener('click', () => window.api.openFolder($('#cvtDir').value.trim()));
+$('#cvtDir').addEventListener('change', async () => {
+  const v = $('#cvtDir').value.trim();
+  if (!v) return;
+  if (!/^[A-Za-z]:[\\/]/.test(v) && !/^\\\\/.test(v)) { showToast('error', '请输入有效的绝对路径，例如 D:\\Video\\converted'); return; }
+  try {
+    await cmd({ cmd: 'config/set', key: 'convert_dir', value: v });
+    showToast('success', '转换输出目录已更新');
+  } catch (e) { showToast('error', e.message); }
+});
+
+// ════════════════════════════════════════════
 //  设置
 // ════════════════════════════════════════════
 function applyStatus(st) {
   if (!st) return;
   if (st.download_dir) $('#cfgDir').value = st.download_dir;
+  if (st.convert_dir) $('#cvtDir').value = st.convert_dir;
   if (st.concurrency != null) {
     $('#cfgConc').value = st.concurrency;
     $('#cfgConcVal').textContent = st.concurrency;
@@ -540,11 +671,13 @@ window.api.onEngineEvent((evt) => {
   } else if (evt.type === 'task') {
     renderTask(evt.task);
     if (evt.task.status === 'done') {
-      logLine(`下载完成: ${evt.task.filepath}`);
-      showToast('success', '下载完成：' + (evt.task.label || ''));
+      const word = evt.task.kind === 'convert' ? '转换完成' : '下载完成';
+      logLine(`${word}: ${evt.task.filepath}`);
+      showToast('success', `${word}：` + (evt.task.label || ''));
     } else if (evt.task.status === 'error') {
-      logLine(`下载失败: ${evt.task.error}`);
-      showToast('error', '下载失败：' + (evt.task.error || '未知错误'));
+      const word = evt.task.kind === 'convert' ? '转换失败' : '下载失败';
+      logLine(`${word}: ${evt.task.error}`);
+      showToast('error', `${word}：` + (evt.task.error || '未知错误'));
     }
   } else if (evt.type === 'ffmpeg') {
     if (evt.ready) {

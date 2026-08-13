@@ -16,6 +16,7 @@ dist/
 *.exe
 *.blockmap
 builder-debug.yml
+build_pyinstaller/
 
 # Node
 node_modules/
