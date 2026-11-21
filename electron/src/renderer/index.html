@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>VideoDL 视频下载器</title>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -9,33 +10,33 @@
   <!-- ════════════ 自定义标题栏 ════════════ -->
   <div class="titlebar">
     <div class="titlebar-logo">
-      <span class="logo-icon">▶</span>
+      <span class="icon icon-play logo-icon" aria-hidden="true"></span>
       <span class="logo-text">VideoDL</span>
-      <span class="logo-ver">v1.3.1</span>
-      <span class="logo-tag">视频下载器</span>
+      <span class="logo-ver">v1.4.0</span>
     </div>
-    <div class="titlebar-status">
+    <div class="titlebar-status" role="status">
       <span class="qq-status-dot" id="engineDot"></span>
       <span id="engineLabel">启动中…</span>
     </div>
     <div class="titlebar-btns">
-      <button class="tbtn" id="btnMin" title="最小化">─</button>
-      <button class="tbtn" id="btnMax" title="最大化">□</button>
-      <button class="tbtn close" id="btnClose" title="关闭">✕</button>
+      <button class="tbtn" id="btnMin" type="button" title="最小化" aria-label="最小化"></button>
+      <button class="tbtn" id="btnMax" type="button" title="最大化" aria-label="最大化或还原"></button>
+      <button class="tbtn close" id="btnClose" type="button" title="关闭" aria-label="关闭"></button>
     </div>
   </div>
 
   <div class="app-body">
     <!-- ════════════ 侧边栏导航 ════════════ -->
-    <aside class="sidebar">
-      <button class="nav-item active" data-page="home"><span class="nav-icon">🏠</span>首页</button>
-      <button class="nav-item" data-page="download"><span class="nav-icon">🎬</span>视频下载</button>
-      <button class="nav-item" data-page="tasks"><span class="nav-icon">📥</span>下载任务</button>
-      <button class="nav-item" data-page="convert"><span class="nav-icon">🔄</span>格式转换</button>
-      <button class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span>设置</button>
-      <button class="nav-item" data-page="log"><span class="nav-icon">📜</span>运行日志</button>
+    <nav class="sidebar" aria-label="应用页面">
+      <button class="nav-item active" data-page="home" aria-current="page"><span class="icon icon-home" aria-hidden="true"></span>首页</button>
+      <button class="nav-item" data-page="download"><span class="icon icon-video" aria-hidden="true"></span>视频下载</button>
+      <button class="nav-item" data-page="tasks"><span class="icon icon-download" aria-hidden="true"></span>下载任务</button>
+      <button class="nav-item" data-page="convert"><span class="icon icon-convert" aria-hidden="true"></span>格式转换</button>
+      <button class="nav-item" data-page="settings"><span class="icon icon-settings" aria-hidden="true"></span>设置</button>
+      <button class="nav-item" data-page="log"><span class="icon icon-log" aria-hidden="true"></span>运行日志</button>
 
       <div class="sidebar-bottom">
+        <h2>下载概览</h2>
         <div class="stat-card">
           <div class="stat-label">已完成下载</div>
           <div class="stat-value" id="statDone">0</div>
@@ -45,47 +46,42 @@
           <div class="stat-value" id="statActive">0</div>
         </div>
       </div>
-    </aside>
+    </nav>
 
     <!-- ════════════ 内容区 ════════════ -->
     <main class="content">
       <!-- ── 首页 ── -->
       <section class="page active" id="page-home">
-        <div class="page-header">
-          <h1>VideoDL 视频下载器</h1>
-          <div class="page-subtitle">一站式解析下载各大平台视频，文件全部保存在 D:\Video</div>
+        <div class="home-hero">
+          <div class="hero-copy">
+            <h1>视频下载工作台</h1>
+            <p>解析并下载 B站、抖音、小红书、YouTube 等平台的视频。</p>
+            <div class="hero-actions">
+              <button type="button" class="btn-primary" data-go="download"><span class="icon icon-link" aria-hidden="true"></span>开始下载</button>
+              <button type="button" class="btn-ghost" data-go="tasks">查看任务<span class="icon icon-arrow" aria-hidden="true"></span></button>
+            </div>
+          </div>
+          <div class="hero-graphic" aria-hidden="true">
+            <span class="hero-ring"></span>
+            <span class="hero-tile"><span class="icon icon-download" aria-hidden="true"></span></span>
+          </div>
         </div>
         <div class="tutorial-steps">
-          <div class="step-card" data-go="download">
-            <span class="step-icon">🔗</span>
-            <div class="step-content">
-              <h3>粘贴链接</h3>
-              <p>复制 B站 / 抖音 / 小红书 / YouTube 等任意平台的视频链接</p>
-            </div>
-            <span class="step-arrow">→</span>
-            <span class="step-num">1</span>
-          </div>
-          <div class="step-card" data-go="download">
-            <span class="step-icon">🎯</span>
-            <div class="step-content">
-              <h3>选择清晰度</h3>
-              <p>解析后挑选画质；B站 1080P/4K 需在设置里开启浏览器登录</p>
-            </div>
-            <span class="step-arrow">→</span>
-            <span class="step-num">2</span>
-          </div>
-          <div class="step-card" data-go="tasks">
-            <span class="step-icon">⬇️</span>
-            <div class="step-content">
-              <h3>一键下载</h3>
-              <p>多任务并发，自动合并音视频，进度实时显示</p>
-            </div>
-            <span class="step-arrow">→</span>
-            <span class="step-num">3</span>
-          </div>
+          <button type="button" class="step-card" data-go="download">
+            <span class="step-top"><span class="icon icon-link step-icon" aria-hidden="true"></span><span class="icon icon-arrow step-arrow" aria-hidden="true"></span></span>
+            <span><span class="step-title">粘贴链接</span><span class="step-desc">复制视频链接，在下载页解析。</span></span>
+          </button>
+          <button type="button" class="step-card" data-go="download">
+            <span class="step-top"><span class="icon icon-target step-icon" aria-hidden="true"></span><span class="icon icon-arrow step-arrow" aria-hidden="true"></span></span>
+            <span><span class="step-title">选择清晰度</span><span class="step-desc">查看可用画质，按需选择视频或音频。</span></span>
+          </button>
+          <button type="button" class="step-card" data-go="tasks">
+            <span class="step-top"><span class="icon icon-download step-icon" aria-hidden="true"></span><span class="icon icon-arrow step-arrow" aria-hidden="true"></span></span>
+            <span><span class="step-title">跟踪下载</span><span class="step-desc">查看实时进度，完成后打开文件位置。</span></span>
+          </button>
         </div>
         <div class="notice-box">
-          <h3>💡 使用说明</h3>
+          <h2><span class="icon icon-info" aria-hidden="true"></span>使用说明</h2>
           <ul>
             <li>支持 <strong>1000+ 平台</strong>：B站、抖音、小红书、微博、YouTube、X(Twitter)、Instagram、TikTok 等</li>
             <li>所有文件（下载、缓存、ffmpeg）都限定在 <strong>D:\Video</strong> 下，不会污染其他目录</li>
@@ -102,11 +98,17 @@
           <h1>视频下载</h1>
           <div class="page-subtitle">粘贴任意平台的视频链接，一键解析下载</div>
         </div>
-        <div class="parse-row">
-          <input id="urlInput" class="inp" spellcheck="false" autocomplete="off"
-                 placeholder="粘贴视频链接，支持 B站 / 抖音 / 小红书 / YouTube / X / Instagram 等 1000+ 平台…" />
-          <button class="btn-ghost" id="btnPaste" title="从剪贴板粘贴">📋 粘贴</button>
-          <button class="btn-primary" id="btnParse">解析</button>
+        <div class="parse-panel">
+          <label for="urlInput">视频链接</label>
+          <div class="parse-row">
+            <div class="link-field">
+              <span class="icon icon-link" aria-hidden="true"></span>
+              <input id="urlInput" class="inp" spellcheck="false" autocomplete="off" placeholder="粘贴视频链接或包含链接的分享文本" />
+            </div>
+            <button class="btn-ghost" id="btnPaste" title="从剪贴板粘贴"><span class="icon icon-clipboard" aria-hidden="true"></span>粘贴</button>
+            <button class="btn-primary" id="btnParse">解析</button>
+          </div>
+          <div class="parse-hint"><kbd>Enter</kbd> 解析链接</div>
         </div>
         <div id="parsing" class="parsing hidden">
           <div class="spinner"></div><span>正在解析，请稍候…</span>
@@ -115,7 +117,7 @@
           <div class="result-head">
             <div class="thumb-wrap">
               <img id="thumb" alt="" />
-              <div id="thumbFallback" class="thumb-fallback">🎬</div>
+              <div id="thumbFallback" class="thumb-fallback"><span class="icon icon-video" aria-hidden="true"></span></div>
             </div>
             <div class="result-meta">
               <div class="result-title" id="vTitle"></div>
@@ -125,8 +127,8 @@
           <div class="format-head">
             <span>选择清晰度</span>
             <div class="format-actions">
-              <button class="btn-ghost btn-small" id="btnCover" title="保存封面图片；抓不到封面时自动截取视频第一帧">🖼️ 下载封面</button>
-              <button class="btn-ghost btn-small" id="btnBest">🎯 下载最佳画质</button>
+              <button class="btn-ghost btn-small" id="btnCover" title="保存封面图片；抓不到封面时自动截取视频第一帧"><span class="icon icon-image" aria-hidden="true"></span>下载封面</button>
+              <button class="btn-ghost btn-small" id="btnBest"><span class="icon icon-target" aria-hidden="true"></span>下载最佳画质</button>
             </div>
           </div>
           <div id="formatList" class="format-list"></div>
@@ -136,15 +138,15 @@
       <!-- ── 下载任务 ── -->
       <section class="page" id="page-tasks">
         <div class="page-header">
-          <h1>下载任务</h1>
+          <h1 tabindex="-1">下载任务</h1>
           <div class="page-subtitle">实时进度，可随时取消</div>
         </div>
         <div class="task-toolbar">
-          <button class="btn-ghost btn-small" id="btnClearDone">🧹 清除已完成</button>
-          <button class="btn-ghost btn-small" id="btnOpenDir">📂 打开下载目录</button>
+          <button class="btn-ghost btn-small" id="btnClearDone"><span class="icon icon-trash" aria-hidden="true"></span>清除已完成</button>
+          <button class="btn-ghost btn-small" id="btnOpenDir"><span class="icon icon-folder" aria-hidden="true"></span>打开下载目录</button>
         </div>
         <div id="taskList" class="task-list"></div>
-        <div id="taskEmpty" class="task-empty">暂无下载任务</div>
+        <div id="taskEmpty" class="task-empty"><span class="icon icon-download empty-icon" aria-hidden="true"></span>暂无下载任务</div>
       </section>
 
       <!-- ── 格式转换 ── -->
@@ -155,7 +157,7 @@
         </div>
 
         <div class="cvt-drop" id="cvtDrop" tabindex="0" role="button" aria-label="选择要转换的文件">
-          <div class="cvt-drop-icon">📂</div>
+          <div class="cvt-drop-icon"><span class="icon icon-folder drop-icon" aria-hidden="true"></span></div>
           <div class="cvt-drop-text">点击选择文件，或把视频 / 音频拖到这里</div>
           <div class="cvt-drop-hint">支持多选，一次可转多个文件</div>
         </div>
@@ -164,13 +166,13 @@
 
         <div class="cvt-ops">
           <div class="dir-row">
-            <span class="cvt-label">输出到</span>
+            <label class="cvt-label" for="cvtDir">输出到</label>
             <input id="cvtDir" class="inp" spellcheck="false" placeholder="D:\Video\converted" />
             <button class="btn-ghost" id="btnCvtDir">选择</button>
             <button class="btn-ghost" id="btnCvtDirOpen">打开</button>
           </div>
           <div class="dir-row">
-            <span class="cvt-label">转为</span>
+            <label class="cvt-label" for="cvtFmt">转为</label>
             <select id="cvtFmt" class="inp fmt-select">
               <optgroup label="视频">
                 <option value="mp4" selected>MP4（推荐）</option>
@@ -186,12 +188,34 @@
                 <option value="aac">AAC</option>
               </optgroup>
             </select>
-            <button class="btn-primary" id="btnCvt">🔄 开始转换</button>
+            <button class="btn-primary" id="btnCvt"><span class="icon icon-convert" aria-hidden="true"></span>开始转换</button>
           </div>
         </div>
 
         <div id="cvtTasks" class="task-list"></div>
-        <div id="cvtEmpty" class="task-empty">选择或拖入文件后即可开始转换</div>
+        <div id="cvtEmpty" class="task-empty"><span class="icon icon-convert empty-icon" aria-hidden="true"></span>选择或拖入文件后即可开始转换</div>
+
+        <div class="ncm-section">
+          <div class="page-header compact-header">
+            <h2>网易云 NCM 解密</h2>
+            <div class="page-subtitle">选择本机 .ncm 文件，解密为原始音频并保留歌曲信息和封面</div>
+          </div>
+          <div class="cvt-drop" id="ncmDrop" tabindex="0" role="button" aria-label="选择要解密的网易云 NCM 文件">
+            <div class="cvt-drop-icon"><span class="icon icon-music drop-icon" aria-hidden="true"></span></div>
+            <div class="cvt-drop-text">点击选择 .ncm 文件，或拖到这里</div>
+            <div class="cvt-drop-hint">本地解密，不会上传音乐文件、账户或登录信息</div>
+          </div>
+          <div id="ncmList" class="cvt-list"></div>
+          <div class="cvt-ops">
+            <div class="dir-row">
+              <label class="cvt-label" for="ncmDir">输出到</label>
+              <input id="ncmDir" class="inp" spellcheck="false" placeholder="D:\Video\converted" />
+              <button class="btn-ghost" id="btnNcmDir">选择</button>
+              <button class="btn-ghost" id="btnNcmDirOpen">打开</button>
+              <button class="btn-primary" id="btnNcm">开始解密</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ── 设置 ── -->
@@ -202,29 +226,29 @@
         </div>
         <div class="settings-grid">
           <div class="settings-group">
-            <h3>📁 下载目录</h3>
+            <h3><span class="icon icon-folder" aria-hidden="true"></span>下载目录</h3>
             <div class="field-hint">视频文件保存位置（建议在 D:\Video 下）</div>
             <div class="dir-row">
-              <input id="cfgDir" class="inp" spellcheck="false" placeholder="D:\Video\downloads" />
+              <input id="cfgDir" aria-label="下载目录" class="inp" spellcheck="false" placeholder="D:\Video\downloads" />
               <button class="btn-ghost" id="btnBrowseDir">选择</button>
               <button class="btn-ghost" id="btnOpenDirCfg">打开</button>
             </div>
           </div>
 
           <div class="settings-group">
-            <h3>🧩 并发下载数</h3>
+            <h3><span class="icon icon-settings" aria-hidden="true"></span>并发下载数</h3>
             <div class="field-hint">同时下载的任务数（1-3），立即生效</div>
             <div class="range-row">
-              <input id="cfgConc" class="slider" type="range" min="1" max="3" step="1" value="2" />
+              <input id="cfgConc" aria-label="并发下载数" class="slider" type="range" min="1" max="3" step="1" value="2" />
               <span class="range-val" id="cfgConcVal">2</span>
             </div>
           </div>
 
           <div class="settings-group" id="loginGroup">
-            <h3>🔑 登录助手（4K / 1080P60）</h3>
+            <h3><span class="icon icon-key" aria-hidden="true"></span>登录助手（4K / 1080P60）</h3>
             <div class="field-hint">弹窗打开网页登录，登录状态只保存在本机 <code>cookies.txt</code>，<code>不会上传</code>、不打包进安装包。下 <strong>4K / 1080P60</strong> 用这个最稳。</div>
             <div class="dir-row">
-              <input id="loginUrl" class="inp" spellcheck="false" value="https://passport.bilibili.com/login" />
+              <input id="loginUrl" aria-label="登录地址" class="inp" spellcheck="false" value="https://passport.bilibili.com/login" />
               <button class="btn-primary" id="btnOpenLogin">打开登录窗口</button>
             </div>
             <div class="dir-row">
@@ -234,7 +258,7 @@
           </div>
 
           <div class="settings-group svip-group" id="cookieGroup">
-            <h3>🔓 B站高清模式（旧方案）</h3>
+            <h3><span class="icon icon-unlock" aria-hidden="true"></span>B站高清模式（旧方案）</h3>
             <div class="field-hint">读取浏览器登录状态。新版 Edge/Chrome 加密不兼容时会失败，<strong>优先用上面的「登录助手」</strong>。Firefox 可正常读取。</div>
             <div class="radio-row">
               <label class="radio-card"><input type="radio" name="cookie" value="" /> 关闭</label>
@@ -245,7 +269,7 @@
           </div>
 
           <div class="settings-group">
-            <h3>🎞️ ffmpeg（合并高清音视频）</h3>
+            <h3><span class="icon icon-video" aria-hidden="true"></span>ffmpeg（合并高清音视频）</h3>
             <div class="field-hint">DASH 分离音视频需 ffmpeg 合并。已内置自动下载，一般无需手动操作。</div>
             <div class="dir-row">
               <span id="ffmpegStatus" class="status-text">检测中…</span>

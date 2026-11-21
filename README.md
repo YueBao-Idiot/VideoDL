@@ -15,7 +15,8 @@
 - 📥 **多任务并发**：1–3 个任务同时下载，进度实时显示，可随时取消
 - 🔗 **音视频自动合并**：内置 ffmpeg，DASH 分离的 1080P/4K 高清音视频自动合并
 - 🔑 **B站高清登录助手**：弹窗登录 B站，解锁 1080P60 / 4K；登录状态只保存在本机 `cookies.txt`，**不上传、不打包进安装包**
-- 🪟 **无边框窗口**：QQ 风格自定义标题栏，GitHub 暗色主题
+- 🎵 **网易云 NCM 本地解密**：选择本机 `.ncm` 文件，解密为原始音频并保留歌曲信息和封面；不上传音乐、账户或登录信息
+- 🪟 **无边框窗口**：深蓝暗色主题，首页提供下载和任务快捷入口
 - 📁 **文件约束**：所有下载文件、缓存、配置都限制在指定目录（默认 `D:\Video`），不污染系统其他目录
 
 ## 🖼️ 截图
@@ -48,7 +49,7 @@ npm install
 
 # 2. 准备 Python 虚拟环境并安装引擎依赖
 python -m venv .venv
-.venv\Scripts\pip install yt-dlp requests
+.venv\Scripts\pip install -r requirements.txt
 
 # 3. 启动
 npm start
@@ -61,7 +62,7 @@ npm start
 引擎打包（onefile）：
 
 ```powershell
-.venv\Scripts\pyinstaller --onefile --console --collect-all yt_dlp app\engine_cli.py --name vdl_engine.exe
+.venv\Scripts\pyinstaller --onefile --console --collect-all yt_dlp --collect-all Cryptodome app\engine_cli.py --name vdl_engine.exe
 ```
 
 Electron 打包（国内网络走 npmmirror 镜像）：

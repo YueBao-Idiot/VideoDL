@@ -15,8 +15,10 @@ import subprocess
 import threading
 import time
 import urllib.request
+import uuid
 import zipfile
 
+import ncm
 import yt_dlp
 from yt_dlp.utils import DownloadCancelled
 from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
@@ -123,10 +125,10 @@ class Task:
         self.format_id = format_id
         self.label = label
         self.thumbnail = None          # 解析得到的封面图 URL，下载封面用
-        self.kind = "download"         # download | convert
-        self.src = None                # 转换任务：源文件路径
-        self.out_path = None           # 转换任务：输出文件路径
-        self.status = "pending"        # pending/running/merging/converting/done/error/cancelled/cancelling
+        self.kind = "download"         # download | convert | ncm
+        self.src = None                # 转换/NCM 任务：源文件路径
+        self.out_path = None           # 转换/NCM 任务：输出文件路径
+        self.status = "pending"        # pending/running/merging/converting/decrypting/tagging/done/error/cancelled/cancelling
         self.progress = 0.0
         self.speed = None
         self.eta = None
@@ -828,6 +830,67 @@ class Engine:
                 return cand
             i += 1
 
+    def start_ncm_decrypt(self, files, out_dir=None):
+        """Create local NCM decrypt tasks. No account, cookie, or API is used."""
+        if not isinstance(files, list) or not files:
+            return {"ok": False, "error": "没有要解密的 NCM 文件"}
+        if out_dir:
+            try:
+                os.makedirs(out_dir, exist_ok=True)
+                self.cfg["convert_dir"] = out_dir
+                save_config(self.cfg)
+            except Exception as e:
+                return {"ok": False, "error": f"无法创建输出目录: {e}"}
+        out_dir = self.cfg.get("convert_dir", CONVERT_DIR)
+
+        todo = []
+        errors = []
+        for source in files:
+            if not (isinstance(source, str) and os.path.isfile(source)):
+                errors.append("文件不存在或已被移动")
+                continue
+            if os.path.splitext(source)[1].lower() != ".ncm":
+                errors.append(f"不是 .ncm 文件: {os.path.basename(source)}")
+                continue
+            try:
+                info = ncm.inspect(source)
+            except Exception as e:
+                errors.append(f"{os.path.basename(source)}: {e}")
+                continue
+            todo.append((source, info))
+        if not todo:
+            return {"ok": False, "error": "；".join(errors) or "没有有效的 NCM 文件"}
+
+        created = []
+        with self._tasks_lock:
+            for source, info in todo:
+                tid = self._next_id
+                self._next_id += 1
+                display = info["display_name"] or os.path.splitext(os.path.basename(source))[0]
+                task = Task(tid, source, "", "🎵 " + display)
+                task.kind = "ncm"
+                task.src = source
+                task.out_path = self._ncm_out_path(display, out_dir, info["extension"])
+                self._cvt_reserved.add(task.out_path)
+                self.tasks[tid] = task
+                created.append(task.to_dict())
+                self._cvt_q.put(task)
+                self._emit({"type": "task", "task": task.to_dict()})
+        return {"ok": True, "tasks": created, "convert_dir": out_dir, "errors": errors}
+
+    def _ncm_out_path(self, title, out_dir, ext):
+        safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title or "网易云音乐")
+        safe = safe.strip(" .")[:150] or "网易云音乐"
+        cand = os.path.join(out_dir, f"{safe}.{ext}")
+        if not os.path.exists(cand) and cand not in self._cvt_reserved:
+            return cand
+        i = 1
+        while True:
+            cand = os.path.join(out_dir, f"{safe} ({i}).{ext}")
+            if not os.path.exists(cand) and cand not in self._cvt_reserved:
+                return cand
+            i += 1
+
     def _convert_worker(self):
         while True:
             task = self._cvt_q.get()
@@ -835,7 +898,10 @@ class Engine:
                 if task.cancel_requested:
                     self._finish(task, "cancelled")
                     continue
-                self._run_convert(task)
+                if task.kind == "ncm":
+                    self._run_ncm_decrypt(task)
+                else:
+                    self._run_convert(task)
             except Exception as e:
                 self._fail(task, e)
             finally:
@@ -914,6 +980,131 @@ class Engine:
         else:
             detail = "\n".join(errlines[-6:])
             self._fail(task, f"转换失败（ffmpeg 退出码 {rc}）{detail[:500]}")
+
+    def _ncm_cover_ext(self, data):
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return ".png"
+        if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+            return ".gif"
+        return ".jpg"
+
+    def _clean_tag(self, value):
+        return str(value or "").replace("\x00", " ").replace("\r", " ").replace("\n", " ").strip()
+
+    def _tag_ncm_audio(self, task, audio_path, output_path, cover, tags):
+        """Copy audio and write NCM tags/cover with ffmpeg, without re-encoding."""
+        ff = os.path.join(BIN_DIR, "ffmpeg.exe")
+        ext = os.path.splitext(output_path)[1]
+        stage = os.path.join(
+            os.path.dirname(output_path), f".videodl-ncm-{uuid.uuid4().hex}.part{ext}"
+        )
+        cover_path = None
+        try:
+            # ffmpeg requires every input (-i) before output options such as
+            # -map. Putting the audio map before a cover input makes ffmpeg
+            # interpret it as an input option and reject NCM cover tagging.
+            args = [ff, "-y", "-nostdin", "-i", audio_path]
+            if cover:
+                cover_path = os.path.join(
+                    os.path.dirname(output_path),
+                    f".videodl-ncm-{uuid.uuid4().hex}{self._ncm_cover_ext(cover)}",
+                )
+                with open(cover_path, "wb") as f:
+                    f.write(cover)
+                args += ["-i", cover_path]
+            args += ["-map", "0:a:0"]
+            if cover:
+                args += ["-map", "1:v:0", "-disposition:v:0", "attached_pic"]
+            args += ["-c", "copy"]
+            for key in ("title", "artist", "album"):
+                value = self._clean_tag(tags.get(key))
+                if value:
+                    args += ["-metadata", f"{key}={value}"]
+            args.append(stage)
+            proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                    stdin=subprocess.DEVNULL)
+            task._proc = proc
+            errlines = []
+            while proc.poll() is None:
+                if task.cancel_requested:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                    break
+                time.sleep(0.1)
+            _stdout, stderr = proc.communicate()
+            task._proc = None
+            if task.cancel_requested:
+                return False, "已取消"
+            if proc.returncode != 0 or not os.path.isfile(stage) or os.path.getsize(stage) == 0:
+                detail = stderr.decode("utf-8", errors="replace").strip().splitlines()
+                return False, "写入音乐标签失败：" + "\n".join(detail[-4:])[:500]
+            os.replace(stage, output_path)
+            return True, ""
+        finally:
+            task._proc = None
+            for path in (cover_path, stage):
+                if path:
+                    try:
+                        os.remove(path)
+                    except FileNotFoundError:
+                        pass
+                    except Exception:
+                        pass
+
+    def _run_ncm_decrypt(self, task):
+        if not task.src or not os.path.isfile(task.src):
+            self._fail(task, "源文件不存在或已被移动")
+            return
+        if not self.ffmpeg_ready:
+            self._update(task, status="decrypting", progress=0.0)
+            ok, message = self.ensure_ffmpeg()
+            if not ok:
+                self._fail(task, f"ffmpeg 未就绪，无法写入音乐标签：{message}")
+                return
+        ext = os.path.splitext(task.out_path)[1] or ".mp3"
+        raw_audio = os.path.join(
+            os.path.dirname(task.out_path), f".videodl-ncm-{uuid.uuid4().hex}.raw{ext}"
+        )
+        try:
+            self._update(task, status="decrypting", progress=0.0)
+
+            def progress(fraction):
+                task.progress = min(95.0, max(0.0, fraction * 95.0))
+                self._emit_throttled(task)
+
+            result = ncm.decrypt(
+                task.src,
+                raw_audio,
+                progress=progress,
+                cancelled=lambda: task.cancel_requested,
+            )
+            if task.cancel_requested:
+                self._finish(task, "cancelled")
+                return
+            self._update(task, status="tagging", progress=96.0)
+            ok, message = self._tag_ncm_audio(
+                task, raw_audio, task.out_path, result["cover"], result["tags"]
+            )
+            if task.cancel_requested:
+                self._finish(task, "cancelled")
+            elif not ok:
+                self._fail(task, message)
+            else:
+                self._update(task, progress=100.0)
+                self._finish(task, "done", task.out_path)
+        except ncm.NcmCancelled:
+            self._finish(task, "cancelled")
+        except Exception as e:
+            self._fail(task, e)
+        finally:
+            try:
+                os.remove(raw_audio)
+            except FileNotFoundError:
+                pass
+            except Exception:
+                pass
 
     # ---------------- 配置 ----------------
     def get_status(self):

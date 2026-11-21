@@ -47,17 +47,23 @@ function fmtEta(s) {
 }
 
 // ── 页面导航 ──
-function go(page) {
-  document.querySelectorAll('.nav-item').forEach((b) =>
-    b.classList.toggle('active', b.dataset.page === page));
+function go(page, fromShortcut = false) {
+  document.querySelectorAll('.nav-item').forEach((b) => {
+    const active = b.dataset.page === page;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   document.querySelectorAll('.page').forEach((p) =>
     p.classList.toggle('active', p.id === 'page-' + page));
+  $('.content').scrollTop = 0;
   if (page === 'download') $('#urlInput').focus();
+  else if (fromShortcut) $('.page.active h1[tabindex]')?.focus();
 }
 document.querySelectorAll('.nav-item').forEach((b) =>
   b.addEventListener('click', () => go(b.dataset.page)));
 document.querySelectorAll('[data-go]').forEach((el) =>
-  el.addEventListener('click', () => go(el.dataset.go)));
+  el.addEventListener('click', () => go(el.dataset.go, true)));
 
 // ── 标题栏 ──
 $('#btnMin').addEventListener('click', () => window.api.minimize());
@@ -288,16 +294,16 @@ async function coverFromTask(id) {
 const tasks = new Map();
 const STATUS_TEXT = {
   pending: '排队中', running: '下载中', merging: '合并中', converting: '转换中',
-  done: '完成', error: '失败', cancelled: '已取消', cancelling: '取消中',
+  decrypting: '解密中', tagging: '写入信息', done: '完成', error: '失败', cancelled: '已取消', cancelling: '取消中',
 };
 const STATUS_CLS = {
   pending: 's-pending', running: 's-running', merging: 's-merging', converting: 's-converting',
-  done: 's-done', error: 's-error', cancelled: 's-cancelled', cancelling: 's-cancelling',
+  decrypting: 's-converting', tagging: 's-converting', done: 's-done', error: 's-error', cancelled: 's-cancelled', cancelling: 's-cancelling',
 };
 
 // 转换任务渲染到转换页自己的列表，下载任务到下载任务页
 function taskListEl(kind) {
-  return (kind === 'convert' ? $('#cvtTasks') : $('#taskList'));
+  return ((kind === 'convert' || kind === 'ncm') ? $('#cvtTasks') : $('#taskList'));
 }
 
 function taskCardHtml() {
@@ -357,6 +363,8 @@ function renderTask(task) {
   if (task.status === 'running') {
     if (task.kind === 'convert') {
       info.textContent = '正在转换…';
+    } else if (task.kind === 'ncm') {
+      info.textContent = '正在准备解密…';
     } else {
       const speed = fmtSpeed(task.speed);
       const eta = fmtEta(task.eta);
@@ -364,6 +372,10 @@ function renderTask(task) {
     }
   } else if (task.status === 'converting') {
     info.textContent = '正在转换…';
+  } else if (task.status === 'decrypting') {
+    info.textContent = '正在本地解密音乐…';
+  } else if (task.status === 'tagging') {
+    info.textContent = '正在写入歌曲信息和封面…';
   } else if (task.status === 'done') {
     fileEl.classList.remove('hidden');
     fileEl.textContent = '📁 ' + (task.filepath || '');
@@ -383,7 +395,7 @@ function renderTask(task) {
   cancelBtn.disabled = task.status === 'cancelling';
 
   const coverBtn = el.querySelector('.btn-cover');
-  coverBtn.classList.toggle('hidden', task.status !== 'done' || task.kind === 'convert');
+  coverBtn.classList.toggle('hidden', task.status !== 'done' || task.kind !== 'download');
 
   updateEmptyStates();
   updateStats();
@@ -394,7 +406,7 @@ function updateEmptyStates() {
   let hasDownload = false, hasConvert = false;
   for (const [id, el] of tasks) {
     const k = el._task ? el._task.kind : 'download';
-    if (k === 'convert') hasConvert = true; else hasDownload = true;
+    if (k === 'convert' || k === 'ncm') hasConvert = true; else hasDownload = true;
   }
   $('#taskEmpty').style.display = hasDownload ? 'none' : 'block';
   $('#cvtEmpty').style.display = hasConvert ? 'none' : 'block';
@@ -406,7 +418,7 @@ function updateStats() {
     const st = el._task ? el._task.status : null;
     if (!st) continue;
     if (st === 'done') done++;
-    if (['pending', 'running', 'merging', 'converting', 'cancelling'].includes(st)) active++;
+    if (['pending', 'running', 'merging', 'converting', 'decrypting', 'tagging', 'cancelling'].includes(st)) active++;
   }
   $('#statDone').textContent = done;
   $('#statActive').textContent = active;
@@ -543,12 +555,120 @@ $('#cvtDir').addEventListener('change', async () => {
 });
 
 // ════════════════════════════════════════════
+//  网易云 NCM 本地解密
+// ════════════════════════════════════════════
+let ncmFiles = [];
+
+function addNcmFiles(paths) {
+  let added = 0;
+  for (const p of paths) {
+    if (!p || ncmFiles.includes(p)) continue;
+    if ((p.split('.').pop() || '').toLowerCase() !== 'ncm') continue;
+    ncmFiles.push(p);
+    added++;
+  }
+  renderNcmList();
+  if (added) showToast('info', `已添加 ${added} 个 NCM 文件`);
+  else if (paths.length) showToast('error', '请选择网易云 .ncm 文件');
+}
+
+function renderNcmList() {
+  const box = $('#ncmList');
+  box.classList.toggle('hidden', !ncmFiles.length);
+  box.innerHTML = '';
+  for (const p of ncmFiles) {
+    const row = document.createElement('div');
+    row.className = 'cvt-file';
+    row.innerHTML = `<span class="cvt-file-name" title="${p}">${cvtName(p)}</span>`
+      + '<button class="btn-ghost btn-small ncm-del" title="移除">✕</button>';
+    row.querySelector('.ncm-del').addEventListener('click', () => {
+      ncmFiles = ncmFiles.filter((x) => x !== p);
+      renderNcmList();
+    });
+    box.appendChild(row);
+  }
+}
+
+const ncmDrop = $('#ncmDrop');
+ncmDrop.addEventListener('click', async () => {
+  const r = await window.api.pickFiles($('#ncmDir').value.trim() || 'D:\\Video\\downloads');
+  if (r && r.ok && r.paths) addNcmFiles(r.paths);
+});
+ncmDrop.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ncmDrop.click(); }
+});
+['dragenter', 'dragover'].forEach((ev) => ncmDrop.addEventListener(ev, (e) => {
+  e.preventDefault();
+  ncmDrop.classList.add('drag');
+}));
+['dragleave', 'drop'].forEach((ev) => ncmDrop.addEventListener(ev, (e) => {
+  e.preventDefault();
+  ncmDrop.classList.remove('drag');
+}));
+ncmDrop.addEventListener('drop', (e) => {
+  const paths = [];
+  for (const f of e.dataTransfer.files) {
+    const p = window.api.getPathForFile(f);
+    if (p) paths.push(p);
+  }
+  if (paths.length) addNcmFiles(paths);
+  else showToast('error', '无法读取拖入的文件路径');
+});
+
+$('#btnNcm').addEventListener('click', async () => {
+  if (!ncmFiles.length) { showToast('info', '请先选择或拖入 .ncm 文件'); return; }
+  const outDir = $('#ncmDir').value.trim();
+  if (outDir && !/^[A-Za-z]:[\\/]/.test(outDir) && !/^\\\\/.test(outDir)) {
+    showToast('error', '输出目录不是有效的绝对路径，例如 D:\\Video\\converted');
+    return;
+  }
+  const files = [...ncmFiles];
+  const btn = $('#btnNcm');
+  btn.disabled = true;
+  try {
+    const r = await cmd({ cmd: 'ncm/decrypt', files, out_dir: outDir });
+    if (!r.ok) throw new Error(r.error || 'NCM 解密启动失败');
+    showToast('success', `已加入 ${r.tasks.length} 个 NCM 解密任务`);
+    if (r.errors && r.errors.length) showToast('error', r.errors.join('；'));
+    logLine(`NCM 解密: ${r.tasks.length} 个文件`);
+    ncmFiles = [];
+    renderNcmList();
+  } catch (e) {
+    showToast('error', 'NCM 解密启动失败：' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#btnNcmDir').addEventListener('click', async () => {
+  const r = await window.api.pickDir($('#ncmDir').value.trim() || 'D:\\Video\\converted');
+  if (r && r.ok) {
+    $('#ncmDir').value = r.path;
+    $('#ncmDir').dispatchEvent(new Event('change'));
+  }
+});
+$('#btnNcmDirOpen').addEventListener('click', () => window.api.openFolder($('#ncmDir').value.trim()));
+$('#ncmDir').addEventListener('change', async () => {
+  const v = $('#ncmDir').value.trim();
+  if (!v) return;
+  if (!/^[A-Za-z]:[\\/]/.test(v) && !/^\\\\/.test(v)) { showToast('error', '请输入有效的绝对路径，例如 D:\\Video\\converted'); return; }
+  try {
+    await cmd({ cmd: 'config/set', key: 'convert_dir', value: v });
+    $('#cvtDir').value = v;
+    showToast('success', 'NCM 输出目录已更新');
+  } catch (e) { showToast('error', e.message); }
+});
+
+// ════════════════════════════════════════════
 //  设置
 // ════════════════════════════════════════════
 function applyStatus(st) {
   if (!st) return;
   if (st.download_dir) $('#cfgDir').value = st.download_dir;
-  if (st.convert_dir) $('#cvtDir').value = st.convert_dir;
+  if (st.convert_dir) {
+    $('#cvtDir').value = st.convert_dir;
+    $('#ncmDir').value = st.convert_dir;
+  }
   if (st.concurrency != null) {
     $('#cfgConc').value = st.concurrency;
     $('#cfgConcVal').textContent = st.concurrency;

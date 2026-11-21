@@ -11,7 +11,7 @@ stdout 每行一条 JSON 事件：
     {"type": "ready", "status": {...}}            引擎初始化完成
     {"type": "bye"}                                退出
 
-支持命令：parse / download / convert / cancel / config/set
+支持命令：parse / download / convert / ncm/decrypt / cancel / config/set
          / ffmpeg/ensure / cover / folder/open / status / ping / quit
 """
 import json
@@ -60,6 +60,9 @@ def handle(engine, req):
         r = engine.start_convert(req.get("files", []),
                                  req.get("out_dir"),
                                  req.get("format", "mp4"))
+        return reply(rid, **r)
+    if cmd == "ncm/decrypt":
+        r = engine.start_ncm_decrypt(req.get("files", []), req.get("out_dir"))
         return reply(rid, **r)
     if cmd == "cancel":
         r = engine.cancel(req.get("task_id"))

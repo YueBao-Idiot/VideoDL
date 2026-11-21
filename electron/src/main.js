@@ -218,7 +218,7 @@ ipcMain.handle('pick-files', async (event, defaultPath) => {
     defaultPath: defaultPath || 'D:\\Video\\downloads',
     properties: ['openFile', 'multiSelections'],
     filters: [
-      { name: '视频 / 音频', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'flv', 'wmv', 'm4v', 'ts', 'mts', '3gp', 'mpg', 'mpeg', 'rmvb', 'mp3', 'flac', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'wma', 'amr'] },
+      { name: '视频 / 音频 / 网易云 NCM', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'flv', 'wmv', 'm4v', 'ts', 'mts', '3gp', 'mpg', 'mpeg', 'rmvb', 'mp3', 'flac', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'wma', 'amr', 'ncm'] },
       { name: '所有文件', extensions: ['*'] },
     ],
   });

@@ -1,6 +1,6 @@
 {
   "name": "videodl-gui",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "VideoDL 视频下载器 —— 解析下载 B站/抖音/YouTube 等 1000+ 平台的视频",
   "main": "src/main.js",
   "author": "VideoDL",
